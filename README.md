@@ -34,6 +34,29 @@ pip install tkinterdnd2
 
 > **注意**：如果不安装 `tkinterdnd2`，程序仍可正常运行，但将无法使用拖拽功能。
 
+## 打包成可执行文件
+
+### 方法一：使用 PyInstaller（推荐）
+
+1. **安装 PyInstaller**
+   ```bash
+   pip install pyinstaller
+   ```
+
+2. **一键打包命令**
+   ```bash
+   pyinstaller --onefile --windowed --name="SubtitleRename" --icon=NONE SubtitleRename.py
+   ```
+
+   参数说明：
+   - `--onefile`: 打包成单个 exe 文件
+   - `--windowed`: 不显示控制台窗口（GUI 程序必备）
+   - `--name="SubRename"`: 生成的可执行文件名称
+   - `--icon=NONE`: 图标文件路径（可选，如有 .ico 文件可替换）
+
+3. **查找生成的文件**
+   打包完成后，在 `dist` 文件夹中找到 `SubRename.exe`
+
 ## 使用方法
 
 ### 启动程序
