@@ -55,13 +55,37 @@ class App:
         list_frame = ttk.LabelFrame(frame, text="拖入视频和字幕文件（自动排序配对）")
         list_frame.pack(fill='both', expand=True, padx=5, pady=5)
 
-        self.listbox1 = tk.Listbox(list_frame, selectmode='extended', height=15)
-        self.listbox1.pack(side='left', fill='both', expand=True, padx=(5, 5), pady=5)
-        scroll1 = ttk.Scrollbar(list_frame, orient='vertical', command=self.listbox1.yview)
-        scroll1.pack(side='right', fill='y')
-        self.listbox1.config(yscrollcommand=scroll1.set)
+        # 创建双列显示框架
+        dual_list_frame = ttk.Frame(list_frame)
+        dual_list_frame.pack(fill='both', expand=True, padx=5, pady=5)
+        
+        # 左侧视频列表
+        video_frame = ttk.Frame(dual_list_frame)
+        video_frame.grid(row=0, column=0, sticky='nsew', padx=(0, 5))
+        ttk.Label(video_frame, text="视频文件", font=('Arial', 10, 'bold')).pack(anchor='w')
+        self.video_listbox = tk.Listbox(video_frame, selectmode='extended', height=15)
+        self.video_listbox.pack(side='left', fill='both', expand=True)
+        video_scroll = ttk.Scrollbar(video_frame, orient='vertical', command=self.video_listbox.yview)
+        video_scroll.pack(side='right', fill='y')
+        self.video_listbox.config(yscrollcommand=video_scroll.set)
+        
+        # 右侧字幕列表
+        sub_frame = ttk.Frame(dual_list_frame)
+        sub_frame.grid(row=0, column=1, sticky='nsew', padx=(5, 0))
+        ttk.Label(sub_frame, text="字幕文件", font=('Arial', 10, 'bold')).pack(anchor='w')
+        self.sub_listbox = tk.Listbox(sub_frame, selectmode='extended', height=15)
+        self.sub_listbox.pack(side='left', fill='both', expand=True)
+        sub_scroll = ttk.Scrollbar(sub_frame, orient='vertical', command=self.sub_listbox.yview)
+        sub_scroll.pack(side='right', fill='y')
+        self.sub_listbox.config(yscrollcommand=sub_scroll.set)
+        
+        # 配置网格权重使两列等宽
+        dual_list_frame.columnconfigure(0, weight=1)
+        dual_list_frame.columnconfigure(1, weight=1)
+        dual_list_frame.rowconfigure(0, weight=1)
 
-        self.files1 = []
+        self.video_files = []  # 存储视频文件路径
+        self.sub_files = []    # 存储字幕文件路径
 
         btn_frame1 = ttk.Frame(frame)
         btn_frame1.pack(fill='x', padx=5, pady=5)
@@ -79,15 +103,35 @@ class App:
         self.status1.pack(side='bottom', fill='x', padx=5, pady=5)
 
         if DND_ENABLED:
-            self.listbox1.drop_target_register(DND_FILES)
-            self.listbox1.dnd_bind('<<Drop>>', self.on_drop_tab1)
+            # 为两个列表框都绑定拖拽事件
+            self.video_listbox.drop_target_register(DND_FILES)
+            self.video_listbox.dnd_bind('<<Drop>>', self.on_drop_tab1)
+            self.sub_listbox.drop_target_register(DND_FILES)
+            self.sub_listbox.dnd_bind('<<Drop>>', self.on_drop_tab1)
 
     def on_drop_tab1(self, event):
         files = self.parse_drop_data(event.data)
         for f in files:
             if os.path.isfile(f):
-                self.files1.append(f)
-                self.listbox1.insert(tk.END, os.path.basename(f))
+                ext = os.path.splitext(f)[1].lower()
+                # 检查是否是支持的文件类型
+                if ext not in VIDEO_EXTS and ext not in SUB_EXTS:
+                    messagebox.showwarning("不支持的文件", f"文件类型不支持: {os.path.basename(f)}")
+                    continue
+                    
+                # 检查是否已存在重复文件
+                all_files = self.video_files + self.sub_files
+                if f in all_files:
+                    messagebox.showwarning("重复文件", f"文件已存在: {os.path.basename(f)}")
+                    continue
+                    
+                # 根据文件类型添加到对应列表
+                if ext in VIDEO_EXTS:
+                    self.video_files.append(f)
+                    self.video_listbox.insert(tk.END, os.path.basename(f))
+                elif ext in SUB_EXTS:
+                    self.sub_files.append(f)
+                    self.sub_listbox.insert(tk.END, os.path.basename(f))
         self.update_status1()
 
     def parse_drop_data(self, data):
@@ -97,39 +141,42 @@ class App:
             return data.split()
 
     def update_status1(self):
-        count = len(self.files1)
-        self.status1.config(text=f"已添加 {count} 个文件")
+        video_count = len(self.video_files)
+        sub_count = len(self.sub_files)
+        total_count = video_count + sub_count
+        self.status1.config(text=f"已添加 {total_count} 个文件 (视频: {video_count}, 字幕: {sub_count})")
 
     def delete_selected1(self):
-        selected = self.listbox1.curselection()
-        if not selected:
-            return
-        for idx in sorted(selected, reverse=True):
-            self.listbox1.delete(idx)
-            del self.files1[idx]
+        # 获取选中的项目
+        video_selected = self.video_listbox.curselection()
+        sub_selected = self.sub_listbox.curselection()
+        
+        # 删除选中的视频文件
+        for idx in sorted(video_selected, reverse=True):
+            self.video_listbox.delete(idx)
+            del self.video_files[idx]
+            
+        # 删除选中的字幕文件
+        for idx in sorted(sub_selected, reverse=True):
+            self.sub_listbox.delete(idx)
+            del self.sub_files[idx]
+            
         self.update_status1()
 
     def clear_list1(self):
-        self.listbox1.delete(0, tk.END)
-        self.files1.clear()
+        self.video_listbox.delete(0, tk.END)
+        self.sub_listbox.delete(0, tk.END)
+        self.video_files.clear()
+        self.sub_files.clear()
         self.update_status1()
 
     def rename_and_copy(self):
-        if not self.files1:
+        if not self.video_files and not self.sub_files:
             messagebox.showwarning("警告", "列表为空，请添加文件。")
             return
 
-        videos = []
-        subs = []
-        for path in self.files1:
-            ext = os.path.splitext(path)[1].lower()
-            if ext in VIDEO_EXTS:
-                videos.append(path)
-            elif ext in SUB_EXTS:
-                subs.append(path)
-            else:
-                messagebox.showwarning("不支持的文件", f"文件类型不支持: {os.path.basename(path)}")
-                return
+        videos = self.video_files[:]
+        subs = self.sub_files[:]
 
         videos.sort(key=lambda p: os.path.basename(p))
         subs.sort(key=lambda p: os.path.basename(p))
