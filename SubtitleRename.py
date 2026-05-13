@@ -35,30 +35,41 @@ class App:
         self.tab2 = ttk.Frame(self.notebook)
         self.notebook.add(self.tab2, text="排序命名 (集数重命名)")
 
-        # 排序命名模板相关属性（新增 base 路径存储）
+        # 排序命名模板相关属性
         self.base_prefix = ""
         self.base_suffix = ""
         self.base_digits = 0
         self.base_video_ext = ""
         self.base_sub_ext = ""
-        self.base_video_path = ""   # 基础视频完整路径
-        self.base_sub_path = ""     # 基础字幕完整路径
+        self.base_video_path = ""
+        self.base_sub_path = ""
 
-        # 初始化各标签页
         self.init_tab1()
         self.init_tab2()
 
-    # ================== 标签页1：匹配改名 ==================
+    # ================== 标签页1：匹配改名（优化拖拽区域） ==================
     def init_tab1(self):
         frame = self.tab1
 
         list_frame = ttk.LabelFrame(frame, text="拖入视频和字幕文件（自动排序配对）")
         list_frame.pack(fill='both', expand=True, padx=5, pady=5)
 
-        # 创建双列显示框架
-        dual_list_frame = ttk.Frame(list_frame)
-        dual_list_frame.pack(fill='both', expand=True, padx=5, pady=5)
-        
+        # 统一拖放区域容器
+        self.drop_zone = ttk.Frame(list_frame)
+        self.drop_zone.pack(fill='both', expand=True, padx=5, pady=5)
+
+        # 提示标签
+        self.lbl_drop_hint = ttk.Label(
+            self.drop_zone,
+            text="🎬 拖放文件到此处" if DND_ENABLED else "⚠ 拖拽功能未启用，请使用文件菜单手动添加",
+            foreground="gray"
+        )
+        self.lbl_drop_hint.pack(anchor='center', pady=5)
+
+        # 双列列表容器
+        dual_list_frame = ttk.Frame(self.drop_zone)
+        dual_list_frame.pack(fill='both', expand=True)
+
         # 左侧视频列表
         video_frame = ttk.Frame(dual_list_frame)
         video_frame.grid(row=0, column=0, sticky='nsew', padx=(0, 5))
@@ -68,7 +79,7 @@ class App:
         video_scroll = ttk.Scrollbar(video_frame, orient='vertical', command=self.video_listbox.yview)
         video_scroll.pack(side='right', fill='y')
         self.video_listbox.config(yscrollcommand=video_scroll.set)
-        
+
         # 右侧字幕列表
         sub_frame = ttk.Frame(dual_list_frame)
         sub_frame.grid(row=0, column=1, sticky='nsew', padx=(5, 0))
@@ -78,14 +89,14 @@ class App:
         sub_scroll = ttk.Scrollbar(sub_frame, orient='vertical', command=self.sub_listbox.yview)
         sub_scroll.pack(side='right', fill='y')
         self.sub_listbox.config(yscrollcommand=sub_scroll.set)
-        
-        # 配置网格权重使两列等宽
+
+        # 配置网格权重
         dual_list_frame.columnconfigure(0, weight=1)
         dual_list_frame.columnconfigure(1, weight=1)
         dual_list_frame.rowconfigure(0, weight=1)
 
-        self.video_files = []  # 存储视频文件路径
-        self.sub_files = []    # 存储字幕文件路径
+        self.video_files = []
+        self.sub_files = []
 
         btn_frame1 = ttk.Frame(frame)
         btn_frame1.pack(fill='x', padx=5, pady=5)
@@ -102,8 +113,11 @@ class App:
         self.status1 = ttk.Label(frame, text="就绪")
         self.status1.pack(side='bottom', fill='x', padx=5, pady=5)
 
+        # 注册拖拽：整个 drop_zone 作为统一拖放区域
         if DND_ENABLED:
-            # 为两个列表框都绑定拖拽事件
+            self.drop_zone.drop_target_register(DND_FILES)
+            self.drop_zone.dnd_bind('<<Drop>>', self.on_drop_tab1)
+            # 同时也保留子列表的拖拽支持（如果拖到具体列表上仍能工作）
             self.video_listbox.drop_target_register(DND_FILES)
             self.video_listbox.dnd_bind('<<Drop>>', self.on_drop_tab1)
             self.sub_listbox.drop_target_register(DND_FILES)
@@ -114,18 +128,15 @@ class App:
         for f in files:
             if os.path.isfile(f):
                 ext = os.path.splitext(f)[1].lower()
-                # 检查是否是支持的文件类型
                 if ext not in VIDEO_EXTS and ext not in SUB_EXTS:
                     messagebox.showwarning("不支持的文件", f"文件类型不支持: {os.path.basename(f)}")
                     continue
-                    
-                # 检查是否已存在重复文件
+
                 all_files = self.video_files + self.sub_files
                 if f in all_files:
                     messagebox.showwarning("重复文件", f"文件已存在: {os.path.basename(f)}")
                     continue
-                    
-                # 根据文件类型添加到对应列表
+
                 if ext in VIDEO_EXTS:
                     self.video_files.append(f)
                     self.video_listbox.insert(tk.END, os.path.basename(f))
@@ -143,24 +154,20 @@ class App:
     def update_status1(self):
         video_count = len(self.video_files)
         sub_count = len(self.sub_files)
-        total_count = video_count + sub_count
-        self.status1.config(text=f"已添加 {total_count} 个文件 (视频: {video_count}, 字幕: {sub_count})")
+        self.status1.config(text=f"已添加 {video_count + sub_count} 个文件 (视频: {video_count}, 字幕: {sub_count})")
 
     def delete_selected1(self):
-        # 获取选中的项目
         video_selected = self.video_listbox.curselection()
         sub_selected = self.sub_listbox.curselection()
-        
-        # 删除选中的视频文件
+
         for idx in sorted(video_selected, reverse=True):
             self.video_listbox.delete(idx)
             del self.video_files[idx]
-            
-        # 删除选中的字幕文件
+
         for idx in sorted(sub_selected, reverse=True):
             self.sub_listbox.delete(idx)
             del self.sub_files[idx]
-            
+
         self.update_status1()
 
     def clear_list1(self):
@@ -227,7 +234,7 @@ class App:
         messagebox.showinfo("操作完成", result)
         self.clear_list1()
 
-    # ================== 标签页2：排序命名 ==================
+    # ================== 标签页2：排序命名（保持不变） ==================
     def init_tab2(self):
         frame = self.tab2
 
@@ -326,7 +333,6 @@ class App:
             if not sub_path:
                 messagebox.showwarning("警告", "未选择字幕文件，操作取消。")
                 return
-            sub_path = sub_path
         elif len(candidates) == 1:
             sub_path = candidates[0]
         else:
@@ -349,7 +355,6 @@ class App:
         self.base_digits = digits['length']
         self.base_video_ext = os.path.splitext(video_path)[1]
         self.base_sub_ext = os.path.splitext(sub_path)[1]
-        # 保存完整路径（优化新增）
         self.base_video_path = video_path
         self.base_sub_path = sub_path
 
@@ -373,7 +378,6 @@ class App:
         }
 
     def sort_rename(self):
-        # 检查模板是否已设置
         if not self.base_video_path:
             messagebox.showerror("错误", "请先选择基础文件模板。")
             return
@@ -391,7 +395,6 @@ class App:
             messagebox.showerror("错误", "起始数字不能为负数。")
             return
 
-        # 分离视频与字幕
         videos = []
         subs = []
         for path in self.files2:
@@ -412,7 +415,6 @@ class App:
                                  f"视频 {len(videos)} 个，字幕 {len(subs)} 个，数量必须相同才能批量重命名！")
             return
 
-        # 目标文件夹：基础视频所在的文件夹
         target_dir = os.path.dirname(self.base_video_path)
         pairs_count = len(videos)
 
@@ -434,13 +436,11 @@ class App:
             new_video_path = os.path.join(target_dir, new_video_name)
             new_sub_path = os.path.join(target_dir, new_sub_name)
 
-            # 如果源文件已经位于目标路径且名称相同，跳过（无需操作）
             if os.path.normcase(video) == os.path.normcase(new_video_path) and \
                os.path.normcase(sub) == os.path.normcase(new_sub_path):
                 renamed += 1
                 continue
 
-            # 冲突检查（视频或字幕目标已存在且不是源文件本身）
             conflict_video = os.path.exists(new_video_path) and os.path.normcase(video) != os.path.normcase(new_video_path)
             conflict_sub = os.path.exists(new_sub_path) and os.path.normcase(sub) != os.path.normcase(new_sub_path)
 
@@ -455,7 +455,6 @@ class App:
                     continue
 
             try:
-                # 移动/重命名文件到目标目录
                 shutil.move(video, new_video_path)
                 shutil.move(sub, new_sub_path)
                 renamed += 1
