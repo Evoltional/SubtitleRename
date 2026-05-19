@@ -1,6 +1,7 @@
 import os
 import re
 import shutil
+import json
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
@@ -12,6 +13,9 @@ except ImportError:
     DND_ENABLED = False
     print("警告：未安装 tkinterdnd2，将无法使用拖拽功能。请运行: pip install tkinterdnd2")
 
+# 配置文件路径
+CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+
 # 支持的视频和字幕扩展名
 VIDEO_EXTS = {'.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm'}
 SUB_EXTS = {'.ass', '.ssa', '.srt', '.sub', '.vtt'}
@@ -22,6 +26,24 @@ class App:
         self.root.title("视频字幕批量处理工具")
         self.root.geometry("750x550")
         self.root.resizable(True, True)
+        
+        # 加载配置
+        self.config = self.load_config()
+        
+        # 应用配置
+        self.apply_config()
+
+        # 创建顶部按钮框架（用于置顶按钮）
+        top_frame = ttk.Frame(root)
+        top_frame.pack(fill='x', padx=10, pady=(5, 0))
+        
+        # 置顶按钮放在右侧
+        self.btn_topmost = ttk.Button(top_frame, text="📍 置顶", command=self.toggle_always_on_top, width=10)
+        self.btn_topmost.pack(side='right')
+        
+        # 如果已经是置顶状态，更新按钮文本
+        if self.config.get('always_on_top', False):
+            self.btn_topmost.config(text="📌 已置顶")
 
         # 选项卡容器
         self.notebook = ttk.Notebook(root)
@@ -46,6 +68,89 @@ class App:
 
         self.init_tab1()
         self.init_tab2()
+        
+        # 绑定窗口关闭事件，保存配置
+        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+    
+    def load_config(self):
+        """加载配置文件"""
+        default_config = {
+            "always_on_top": False,
+            "window_geometry": "750x550",
+            "window_x": None,
+            "window_y": None
+        }
+        
+        if os.path.exists(CONFIG_FILE):
+            try:
+                with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+                    # 合并默认配置，确保新字段存在
+                    for key, value in default_config.items():
+                        if key not in config:
+                            config[key] = value
+                    return config
+            except Exception as e:
+                print(f"加载配置文件失败: {e}")
+                return default_config
+        return default_config
+    
+    def save_config(self):
+        """保存配置文件"""
+        try:
+            # 获取当前窗口位置和大小
+            geometry = self.root.geometry()
+            # 解析 geometry 字符串: "widthxheight+x+y"
+            parts = geometry.split('+')
+            size_part = parts[0]
+            x = int(parts[1]) if len(parts) > 1 else None
+            y = int(parts[2]) if len(parts) > 2 else None
+            
+            self.config['window_geometry'] = size_part
+            self.config['window_x'] = x
+            self.config['window_y'] = y
+            
+            with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+                json.dump(self.config, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"保存配置文件失败: {e}")
+    
+    def apply_config(self):
+        """应用配置到窗口"""
+        # 应用窗口置顶设置
+        if self.config.get('always_on_top', False):
+            self.root.attributes('-topmost', True)
+        
+        # 应用窗口位置和大小
+        x = self.config.get('window_x')
+        y = self.config.get('window_y')
+        geometry = self.config.get('window_geometry', '750x550')
+        
+        if x is not None and y is not None:
+            self.root.geometry(f"{geometry}+{x}+{y}")
+        else:
+            self.root.geometry(geometry)
+    
+    def toggle_always_on_top(self):
+        """切换置顶状态"""
+        current_state = self.root.attributes('-topmost')
+        new_state = not current_state
+        self.root.attributes('-topmost', new_state)
+        self.config['always_on_top'] = new_state
+        
+        # 更新按钮文本
+        if new_state:
+            self.btn_topmost.config(text="📌 已置顶")
+        else:
+            self.btn_topmost.config(text="📍 置顶")
+        
+        # 立即保存配置
+        self.save_config()
+    
+    def on_closing(self):
+        """窗口关闭时保存配置"""
+        self.save_config()
+        self.root.destroy()
 
     # ================== 标签页1：匹配改名（优化拖拽区域） ==================
     def init_tab1(self):
